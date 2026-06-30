@@ -10,8 +10,7 @@ export function escapeHtml(value) {
 }
 
 export function escapeAttribute(value) {
-  return escapeHtml(value).replaceAll('
-', '&#10;');
+  return escapeHtml(value).replaceAll('\n', '&#10;');
 }
 
 export function formatDate(value) {
