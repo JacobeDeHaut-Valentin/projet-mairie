@@ -1,15 +1,29 @@
+import { initializeData, load } from './modules/storage.js';
 import { renderAgenda } from './modules/agenda.js';
 import { renderNotes } from './modules/notes.js';
 
-const app = document.getElementById("app");
+const app = document.getElementById('app');
 
-function render(view) {
-  if (view === "agenda") renderAgenda(app);
-  if (view === "notes") renderNotes(app);
+initializeData();
+
+function setActiveTab(view) {
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.view === view);
+  });
 }
 
-render("agenda");
+function render(view) {
+  if (view === 'agenda') {
+    renderAgenda(app);
+  } else if (view === 'notes') {
+    renderNotes(app);
+  }
 
-document.querySelectorAll("nav button").forEach(btn => {
-  btn.onclick = () => render(btn.dataset.view);
+  setActiveTab(view);
+}
+
+render('agenda');
+
+document.querySelectorAll('[data-view]').forEach((btn) => {
+  btn.addEventListener('click', () => render(btn.dataset.view));
 });
