@@ -412,3 +412,259 @@ hr.sep {
 .collapsible.open .collapsible-content {
   display: block;
 }
+
+/* =========================================================
+   V1.4 — améliorations UX agenda + notes
+   ========================================================= */
+
+.page-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+  align-items: center;
+}
+
+.page-toolbar input,
+.page-toolbar select {
+  width: auto;
+  min-width: 180px;
+  flex: 1 1 180px;
+}
+
+.page-toolbar .check-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 10px 14px;
+}
+
+.page-toolbar .check-inline input {
+  width: auto;
+  margin: 0;
+}
+
+.fab {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: none;
+  background: var(--primary);
+  color: white;
+  font-size: 30px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  z-index: 1100;
+}
+
+.fab:hover {
+  background: var(--primary-dark);
+  transform: scale(1.03);
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.46);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 1200;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-content {
+  background: white;
+  border-radius: var(--radius);
+  width: min(680px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.modal-header h3 {
+  margin: 0;
+}
+
+.modal-close {
+  background: var(--secondary-soft);
+  border: none;
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.compact-list {
+  display: grid;
+  gap: 12px;
+}
+
+.collapsible {
+  border-left: 5px solid var(--secondary);
+}
+
+.collapsible.favorite {
+  border-left-color: var(--warning);
+}
+
+.collapsible-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.collapsible-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.collapsible-title {
+  margin: 0 0 6px;
+  font-size: 1.06rem;
+}
+
+.collapsible-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.collapsible-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.collapsible-content {
+  display: none;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.collapsible.open .collapsible-content {
+  display: block;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.82rem;
+  font-weight: bold;
+}
+
+.badge-private {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.badge-restricted {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge-public {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.icon-btn {
+  border: none;
+  border-radius: 10px;
+  background: var(--secondary-soft);
+  padding: 8px 10px;
+  cursor: pointer;
+  min-width: 40px;
+}
+
+.icon-btn.favorite-on {
+  background: #fef3c7;
+}
+
+.inline-edit {
+  display: grid;
+  gap: 12px;
+}
+
+.inline-edit textarea {
+  min-height: 100px;
+}
+
+.inline-grid-2 {
+  display: grid;
+  gap: 12px;
+}
+
+@media (min-width: 720px) {
+  .inline-grid-2 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.checkbox-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.checkbox-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 9px 12px;
+}
+
+.checkbox-pill input {
+  width: auto;
+  margin: 0;
+}
+
+.item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.item-description {
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+.empty-state {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
