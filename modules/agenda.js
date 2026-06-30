@@ -1,320 +1,326 @@
-import { groups } from './groups.js';
-import { load, save, normalizeEvent } from './storage.js';
-import {
-  escapeHtml,
-  escapeAttribute,
-  formatDate,
-  badgeLabel,
-  badgeClass,
-  renderTags,
-  sortEvents
-} from './utils.js';
+import { load, save } from './storage.js';
+import { groups, getGroupName } from './groups.js';
 
 const KEY = 'mairie.events';
 
 export function renderAgenda(container) {
-  let events = sortEvents(load(KEY, []).map(normalizeEvent));
-  let state = {
-    editingId: null,
-    groupFilter: 'all',
-    visibilityFilter: 'all',
+  let events = load(KEY, []).map(normalizeEvent);
+  let openId = null;
+  let editingId = null;
+
+  let filters = {
+    group: 'all',
+    visibility: 'all',
     favoritesOnly: false
   };
 
   container.innerHTML = `
-    <div class="page-head">
-      <div>
-        <h2>Agenda interne</h2>
-        <p>V1.1 + V1.2 • multi-commissions, visibilité, favoris, tri intelligent et édition.</p>
-      </div>
-      <div class="kpis">
-        <div class="kpi"><div class="kpi-label">Événements</div><div class="kpi-value" id="kpiEvents">0</div></div>
-        <div class="kpi"><div class="kpi-label">Publics</div><div class="kpi-value" id="kpiPublic">0</div></div>
-        <div class="kpi"><div class="kpi-label">Favoris</div><div class="kpi-value" id="kpiFav">0</div></div>
-      </div>
+    <h2>Agenda</h2>
+
+    <div class="page-toolbar">
+      <select id="filterGroup">
+        <option value="all">Toutes les commissions</option>
+        ${groups.map(g => `<option value="${g.id}">${g.name}</option>`).join('')}
+      </select>
+
+      <select id="filterVisibility">
+        <option value="all">Toutes les visibilités</option>
+        <option value="private">Privé</option>
+        <option value="restricted">Restreint</option>
+        <option value="public">Public</option>
+      </select>
+
+      <label class="check-inline">
+        <input type="checkbox" id="favoritesOnly">
+        <span>Favoris seulement</span>
+      </label>
     </div>
 
-    <section class="grid grid-2">
-      <div class="card">
-        <h3 class="section-title" id="agendaFormTitle">Nouvel événement</h3>
+    <div id="eventList" class="compact-list"></div>
 
-        <div class="form-grid">
+    <button class="fab" id="openModal" title="Nouvel événement">+</button>
+
+    <div class="modal hidden" id="eventModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Nouvel événement</h3>
+          <button class="modal-close" id="closeModal">Fermer</button>
+        </div>
+
+        <div class="inline-edit">
           <div>
-            <label for="eventTitle">Titre *</label>
-            <input id="eventTitle" placeholder="Ex. Réunion commission finances" />
+            <label for="newTitle">Titre *</label>
+            <input id="newTitle" placeholder="Ex. Réunion commission finances">
           </div>
 
-          <div>
-            <label for="eventDate">Date</label>
-            <input id="eventDate" type="date" />
-          </div>
+          <div class="inline-grid-2">
+            <div>
+              <label for="newDate">Date</label>
+              <input id="newDate" type="date">
+            </div>
 
-          <div>
-            <label for="eventLocation">Lieu</label>
-            <input id="eventLocation" placeholder="Ex. Salle du conseil" />
-          </div>
-
-          <div>
-            <label for="eventVisibility">Visibilité</label>
-            <select id="eventVisibility">
-              <option value="private">Privé</option>
-              <option value="restricted">Restreint</option>
-              <option value="public">Public</option>
-            </select>
-          </div>
-
-          <div>
-            <label for="eventDescription">Description</label>
-            <textarea id="eventDescription" placeholder="Informations utiles, ordre du jour, contexte..."></textarea>
-          </div>
-
-          <div>
-            <label>Commissions concernées</label>
-            <div class="checkbox-grid" id="eventGroups">
-              ${groups
-                .map(
-                  (group) => `
-                    <label class="check-pill">
-                      <input type="checkbox" value="${group.id}" />
-                      <span>${escapeHtml(group.name)}</span>
-                    </label>
-                  `
-                )
-                .join('')}
+            <div>
+              <label for="newVisibility">Visibilité</label>
+              <select id="newVisibility">
+                <option value="private">Privé</option>
+                <option value="restricted">Restreint</option>
+                <option value="public">Public</option>
+              </select>
             </div>
           </div>
-        </div>
 
-        <div class="actions">
-          <button class="primary" id="saveEventBtn">Ajouter l'événement</button>
-          <button class="secondary" id="cancelEditBtn" hidden>Annuler la modification</button>
-        </div>
-        <div class="status-line" id="formStatus">Astuce : un événement peut être lié à plusieurs commissions.</div>
-      </div>
-
-      <div>
-        <div class="card card-soft">
-          <div class="toolbar">
-            <select id="agendaGroupFilter">
-              <option value="all">Toutes les commissions</option>
-              ${groups.map((group) => `<option value="${group.id}">${escapeHtml(group.name)}</option>`).join('')}
-            </select>
-
-            <select id="agendaVisibilityFilter">
-              <option value="all">Toutes les visibilités</option>
-              <option value="private">Privé</option>
-              <option value="restricted">Restreint</option>
-              <option value="public">Public</option>
-            </select>
-
-            <label class="check-pill">
-              <input type="checkbox" id="agendaFavoritesOnly" />
-              <span>Favoris seulement</span>
-            </label>
+          <div>
+            <label for="newLocation">Lieu</label>
+            <input id="newLocation" placeholder="Ex. Salle du conseil">
           </div>
-          <div class="small-note">Tri : favoris d'abord, puis date la plus proche.</div>
-        </div>
 
-        <div class="list" id="eventList"></div>
+          <div>
+            <label>Commissions</label>
+            <div class="checkbox-list" id="newGroups">
+              ${groups.map(group => `
+                <label class="checkbox-pill">
+                  <input type="checkbox" value="${group.id}">
+                  <span>${group.name}</span>
+                </label>
+              `).join('')}
+            </div>
+          </div>
+
+          <div>
+            <label for="newDescription">Description</label>
+            <textarea id="newDescription" placeholder="Informations complémentaires..."></textarea>
+          </div>
+
+          <div class="item-actions">
+            <button class="primary" id="saveNewEvent">Ajouter</button>
+          </div>
+        </div>
       </div>
-    </section>
+    </div>
   `;
 
   const refs = {
-    title: container.querySelector('#eventTitle'),
-    date: container.querySelector('#eventDate'),
-    location: container.querySelector('#eventLocation'),
-    visibility: container.querySelector('#eventVisibility'),
-    description: container.querySelector('#eventDescription'),
-    groupsWrap: container.querySelector('#eventGroups'),
-    formTitle: container.querySelector('#agendaFormTitle'),
-    saveBtn: container.querySelector('#saveEventBtn'),
-    cancelBtn: container.querySelector('#cancelEditBtn'),
-    formStatus: container.querySelector('#formStatus'),
-    eventList: container.querySelector('#eventList'),
-    groupFilter: container.querySelector('#agendaGroupFilter'),
-    visibilityFilter: container.querySelector('#agendaVisibilityFilter'),
-    favoritesOnly: container.querySelector('#agendaFavoritesOnly'),
-    kpiEvents: container.querySelector('#kpiEvents'),
-    kpiPublic: container.querySelector('#kpiPublic'),
-    kpiFav: container.querySelector('#kpiFav')
+    list: container.querySelector('#eventList'),
+    filterGroup: container.querySelector('#filterGroup'),
+    filterVisibility: container.querySelector('#filterVisibility'),
+    favoritesOnly: container.querySelector('#favoritesOnly'),
+    modal: container.querySelector('#eventModal'),
+    openModalBtn: container.querySelector('#openModal'),
+    closeModalBtn: container.querySelector('#closeModal'),
+    saveNewBtn: container.querySelector('#saveNewEvent'),
+    newTitle: container.querySelector('#newTitle'),
+    newDate: container.querySelector('#newDate'),
+    newVisibility: container.querySelector('#newVisibility'),
+    newLocation: container.querySelector('#newLocation'),
+    newGroups: container.querySelector('#newGroups'),
+    newDescription: container.querySelector('#newDescription')
   };
 
   bindEvents();
   refresh();
 
   function bindEvents() {
-    refs.saveBtn.addEventListener('click', saveFromForm);
-    refs.cancelBtn.addEventListener('click', resetForm);
-
-    refs.groupFilter.addEventListener('change', () => {
-      state.groupFilter = refs.groupFilter.value;
+    refs.filterGroup.addEventListener('change', () => {
+      filters.group = refs.filterGroup.value;
       refresh();
     });
 
-    refs.visibilityFilter.addEventListener('change', () => {
-      state.visibilityFilter = refs.visibilityFilter.value;
+    refs.filterVisibility.addEventListener('change', () => {
+      filters.visibility = refs.filterVisibility.value;
       refresh();
     });
 
     refs.favoritesOnly.addEventListener('change', () => {
-      state.favoritesOnly = refs.favoritesOnly.checked;
+      filters.favoritesOnly = refs.favoritesOnly.checked;
       refresh();
     });
 
-    refs.eventList.addEventListener('click', (event) => {
-      const favoriteBtn = event.target.closest('[data-favorite-id]');
+    refs.openModalBtn.addEventListener('click', () => {
+      refs.modal.classList.remove('hidden');
+    });
+
+    refs.closeModalBtn.addEventListener('click', () => {
+      refs.modal.classList.add('hidden');
+      resetCreateForm();
+    });
+
+    refs.saveNewBtn.addEventListener('click', createEvent);
+
+    refs.list.addEventListener('click', (event) => {
+      const favoriteBtn = event.target.closest('[data-favorite]');
       if (favoriteBtn) {
-        toggleFavorite(Number(favoriteBtn.dataset.favoriteId));
+        event.stopPropagation();
+        const id = Number(favoriteBtn.dataset.favorite);
+        toggleFavorite(id);
         return;
       }
 
-      const editBtn = event.target.closest('[data-edit-id]');
-      if (editBtn) {
-        startEdit(Number(editBtn.dataset.editId));
-        return;
-      }
-
-      const deleteBtn = event.target.closest('[data-delete-id]');
+      const deleteBtn = event.target.closest('[data-delete]');
       if (deleteBtn) {
-        removeEvent(Number(deleteBtn.dataset.deleteId));
+        event.stopPropagation();
+        const id = Number(deleteBtn.dataset.delete);
+        deleteEvent(id);
+        return;
+      }
+
+      const editBtn = event.target.closest('[data-edit]');
+      if (editBtn) {
+        event.stopPropagation();
+        const id = Number(editBtn.dataset.edit);
+        editingId = id;
+        openId = id;
+        refresh();
+        return;
+      }
+
+      const cancelEditBtn = event.target.closest('[data-cancel-edit]');
+      if (cancelEditBtn) {
+        event.stopPropagation();
+        editingId = null;
+        refresh();
+        return;
+      }
+
+      const saveEditBtn = event.target.closest('[data-save-edit]');
+      if (saveEditBtn) {
+        event.stopPropagation();
+        const id = Number(saveEditBtn.dataset.saveEdit);
+        saveEditedEvent(id);
+        return;
+      }
+
+      const header = event.target.closest('.collapsible-header');
+      if (header) {
+        const card = header.closest('.collapsible');
+        if (!card) return;
+
+        const id = Number(card.dataset.id);
+        openId = openId === id ? null : id;
+        editingId = null;
+        refresh();
       }
     });
   }
 
-  function getSelectedGroups() {
-    return Array.from(refs.groupsWrap.querySelectorAll('input[type="checkbox"]:checked')).map((input) => input.value);
-  }
-
-  function setSelectedGroups(ids = []) {
-    refs.groupsWrap.querySelectorAll('input[type="checkbox"]').forEach((input) => {
-      input.checked = ids.includes(input.value);
-    });
-  }
-
-  function saveFromForm() {
-    const title = refs.title.value.trim();
-    const date = refs.date.value;
-    const location = refs.location.value.trim();
-    const visibility = refs.visibility.value;
-    const description = refs.description.value.trim();
-    const selectedGroups = getSelectedGroups();
+  function createEvent() {
+    const title = refs.newTitle.value.trim();
+    const date = refs.newDate.value;
+    const visibility = refs.newVisibility.value;
+    const location = refs.newLocation.value.trim();
+    const description = refs.newDescription.value.trim();
+    const selectedGroups = getCheckedValues(refs.newGroups);
 
     if (!title) {
       alert('Merci de renseigner un titre.');
       return;
     }
 
-    if (!selectedGroups.length) {
-      alert('Sélectionne au moins une commission pour tester la logique multi-commissions.');
-      return;
-    }
+    const eventItem = normalizeEvent({
+      id: Date.now(),
+      title,
+      date,
+      visibility,
+      location,
+      description,
+      groups: selectedGroups,
+      favorite: false
+    });
 
-    const now = new Date().toISOString();
+    events.unshift(eventItem);
+    saveAll();
 
-    if (state.editingId) {
-      events = events.map((item) =>
-        item.id === state.editingId
-          ? normalizeEvent({
-              ...item,
-              title,
-              date,
-              location,
-              visibility,
-              description,
-              groups: selectedGroups,
-              updatedAt: now
-            })
-          : item
-      );
-    } else {
-      events.unshift(
-        normalizeEvent({
-          id: Date.now(),
-          title,
-          date,
-          location,
-          visibility,
-          description,
-          groups: selectedGroups,
-          favorite: false,
-          createdAt: now,
-          updatedAt: now
-        })
-      );
-    }
-
-    events = sortEvents(events);
-    save(KEY, events);
-    resetForm();
+    refs.modal.classList.add('hidden');
+    resetCreateForm();
+    openId = eventItem.id;
     refresh();
   }
 
-  function startEdit(id) {
-    const item = events.find((eventItem) => eventItem.id === id);
-    if (!item) return;
-
-    state.editingId = id;
-    refs.formTitle.textContent = 'Modifier un événement';
-    refs.saveBtn.textContent = 'Enregistrer les modifications';
-    refs.cancelBtn.hidden = false;
-    refs.formStatus.textContent = 'Mode édition actif : pense à enregistrer ou annuler.';
-
-    refs.title.value = item.title;
-    refs.date.value = item.date || '';
-    refs.location.value = item.location || '';
-    refs.visibility.value = item.visibility;
-    refs.description.value = item.description || '';
-    setSelectedGroups(item.groups || []);
-    refs.title.focus();
-  }
-
-  function resetForm() {
-    state.editingId = null;
-    refs.formTitle.textContent = 'Nouvel événement';
-    refs.saveBtn.textContent = "Ajouter l'événement";
-    refs.cancelBtn.hidden = true;
-    refs.formStatus.textContent = 'Astuce : un événement peut être lié à plusieurs commissions.';
-
-    refs.title.value = '';
-    refs.date.value = '';
-    refs.location.value = '';
-    refs.visibility.value = 'private';
-    refs.description.value = '';
-    setSelectedGroups([]);
+  function resetCreateForm() {
+    refs.newTitle.value = '';
+    refs.newDate.value = '';
+    refs.newVisibility.value = 'private';
+    refs.newLocation.value = '';
+    refs.newDescription.value = '';
+    refs.newGroups.querySelectorAll('input[type="checkbox"]').forEach(input => {
+      input.checked = false;
+    });
   }
 
   function toggleFavorite(id) {
-    const now = new Date().toISOString();
-    events = sortEvents(
-      events.map((item) =>
-        item.id === id ? { ...item, favorite: !item.favorite, updatedAt: now } : item
-      )
+    events = events.map(item =>
+      item.id === id ? { ...item, favorite: !item.favorite } : item
     );
-    save(KEY, events);
+    saveAll();
     refresh();
   }
 
-  function removeEvent(id) {
-    const item = events.find((eventItem) => eventItem.id === id);
+  function deleteEvent(id) {
+    const item = events.find(eventItem => eventItem.id === id);
     if (!item) return;
 
-    const confirmed = confirm(`Supprimer l'événement « ${item.title} » ?`);
-    if (!confirmed) return;
+    const ok = confirm(`Supprimer l'événement « ${item.title} » ?`);
+    if (!ok) return;
 
-    events = events.filter((eventItem) => eventItem.id !== id);
-    save(KEY, events);
+    events = events.filter(eventItem => eventItem.id !== id);
 
-    if (state.editingId === id) resetForm();
+    if (openId === id) openId = null;
+    if (editingId === id) editingId = null;
+
+    saveAll();
     refresh();
+  }
+
+  function saveEditedEvent(id) {
+    const card = refs.list.querySelector(`.collapsible[data-id="${id}"]`);
+    if (!card) return;
+
+    const title = card.querySelector('.edit-title').value.trim();
+    const date = card.querySelector('.edit-date').value;
+    const visibility = card.querySelector('.edit-visibility').value;
+    const location = card.querySelector('.edit-location').value.trim();
+    const description = card.querySelector('.edit-description').value.trim();
+    const selectedGroups = Array.from(card.querySelectorAll('.edit-group:checked')).map(input => input.value);
+
+    if (!title) {
+      alert('Le titre ne peut pas être vide.');
+      return;
+    }
+
+    events = events.map(item =>
+      item.id === id
+        ? normalizeEvent({
+            ...item,
+            title,
+            date,
+            visibility,
+            location,
+            description,
+            groups: selectedGroups
+          })
+        : item
+    );
+
+    editingId = null;
+    saveAll();
+    refresh();
+  }
+
+  function saveAll() {
+    save(KEY, events);
   }
 
   function getFilteredEvents() {
     return sortEvents(
-      events.filter((item) => {
-        const groupMatch = state.groupFilter === 'all' || item.groups.includes(state.groupFilter);
-        const visibilityMatch = state.visibilityFilter === 'all' || item.visibility === state.visibilityFilter;
-        const favoriteMatch = !state.favoritesOnly || item.favorite;
+      events.filter(item => {
+        const groupMatch =
+          filters.group === 'all' || item.groups.includes(filters.group);
+
+        const visibilityMatch =
+          filters.visibility === 'all' || item.visibility === filters.visibility;
+
+        const favoriteMatch =
+          !filters.favoritesOnly || item.favorite;
+
         return groupMatch && visibilityMatch && favoriteMatch;
       })
     );
@@ -323,48 +329,191 @@ export function renderAgenda(container) {
   function refresh() {
     const filtered = getFilteredEvents();
 
-    refs.kpiEvents.textContent = String(events.length);
-    refs.kpiPublic.textContent = String(events.filter((item) => item.visibility === 'public').length);
-    refs.kpiFav.textContent = String(events.filter((item) => item.favorite).length);
-
     if (!filtered.length) {
-      refs.eventList.innerHTML = `<div class="card empty">Aucun événement pour ce filtre.</div>`;
+      refs.list.innerHTML = `<div class="card empty-state">Aucun événement pour ces filtres.</div>`;
       return;
     }
 
-    refs.eventList.innerHTML = filtered
-      .map(
-        (item) => `
-          <article class="card item-card ${item.favorite ? 'favorite' : ''}">
-            <div class="item-top">
-              <div>
-                <h3 class="item-title">${escapeHtml(item.title)}</h3>
-                <div class="meta-row">
-                  <span class="meta">📅 ${escapeHtml(formatDate(item.date))}</span>
-                  <span class="meta">📍 ${escapeHtml(item.location || 'Lieu non précisé')}</span>
-                  <span class="badge ${badgeClass(item.visibility)}">${badgeLabel(item.visibility)}</span>
-                </div>
-              </div>
-              <button class="icon-btn ${item.favorite ? 'active-star' : ''}" data-favorite-id="${item.id}" title="Basculer favori">
-                ${item.favorite ? '⭐' : '☆'}
-              </button>
-            </div>
-
-            <div>${renderTags(item.groups || [])}</div>
-
-            ${item.description ? `<div class="inline-note">${escapeHtml(item.description)}</div>` : ''}
-
-            <div class="status-line">
-              <span>Mis à jour : ${escapeHtml(new Date(item.updatedAt).toLocaleString('fr-FR'))}</span>
-            </div>
-
-            <div class="actions">
-              <button class="secondary" data-edit-id="${item.id}">Modifier</button>
-              <button class="danger" data-delete-id="${item.id}">Supprimer</button>
-            </div>
-          </article>
-        `
-      )
-      .join('');
+    refs.list.innerHTML = filtered.map(item => renderCard(item)).join('');
   }
+
+  function renderCard(item) {
+    const isOpen = openId === item.id;
+    const isEditing = editingId === item.id;
+
+    return `
+      <article class="card collapsible ${isOpen ? 'open' : ''} ${item.favorite ? 'favorite' : ''}" data-id="${item.id}">
+        <div class="collapsible-header">
+          <div class="collapsible-main">
+            <h3 class="collapsible-title">${escapeHtml(item.title)}</h3>
+
+            <div class="collapsible-tags">
+              ${item.groups.length
+                ? item.groups.map(groupId => `<span class="tag">${escapeHtml(getGroupName(groupId))}</span>`).join('')
+                : `<span class="muted">Sans commission</span>`
+              }
+            </div>
+          </div>
+
+          <div class="collapsible-meta">
+            <span class="badge ${getVisibilityClass(item.visibility)}">${getVisibilityLabel(item.visibility)}</span>
+            <button class="icon-btn ${item.favorite ? 'favorite-on' : ''}" data-favorite="${item.id}" title="Favori">
+              ${item.favorite ? '★' : '☆'}
+            </button>
+          </div>
+        </div>
+
+        <div class="collapsible-content">
+          ${
+            isEditing
+              ? renderEditForm(item)
+              : renderDetails(item)
+          }
+        </div>
+      </article>
+    `;
+  }
+
+  function renderDetails(item) {
+    return `
+      <div class="muted">📅 ${formatDate(item.date)}</div>
+      <div class="muted">📍 ${escapeHtml(item.location || 'Lieu non précisé')}</div>
+
+      ${
+        item.description
+          ? `<div class="item-description" style="margin-top:12px;">${escapeHtml(item.description)}</div>`
+          : `<div class="muted" style="margin-top:12px;">Aucune description</div>`
+      }
+
+      <div class="item-actions">
+        <button class="secondary" data-edit="${item.id}">Modifier</button>
+        <button class="danger" data-delete="${item.id}">Supprimer</button>
+      </div>
+    `;
+  }
+
+  function renderEditForm(item) {
+    return `
+      <div class="inline-edit">
+        <div>
+          <label>Titre</label>
+          <input class="edit-title" value="${escapeAttribute(item.title)}">
+        </div>
+
+        <div class="inline-grid-2">
+          <div>
+            <label>Date</label>
+            <input class="edit-date" type="date" value="${escapeAttribute(item.date || '')}">
+          </div>
+
+          <div>
+            <label>Visibilité</label>
+            <select class="edit-visibility">
+              <option value="private" ${item.visibility === 'private' ? 'selected' : ''}>Privé</option>
+              <option value="restricted" ${item.visibility === 'restricted' ? 'selected' : ''}>Restreint</option>
+              <option value="public" ${item.visibility === 'public' ? 'selected' : ''}>Public</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label>Lieu</label>
+          <input class="edit-location" value="${escapeAttribute(item.location || '')}">
+        </div>
+
+        <div>
+          <label>Commissions</label>
+          <div class="checkbox-list">
+            ${groups.map(group => `
+              <label class="checkbox-pill">
+                <input class="edit-group" type="checkbox" value="${group.id}" ${item.groups.includes(group.id) ? 'checked' : ''}>
+                <span>${group.name}</span>
+              </label>
+            `).join('')}
+          </div>
+        </div>
+
+        <div>
+          <label>Description</label>
+          <textarea class="edit-description">${escapeHtml(item.description || '')}</textarea>
+        </div>
+
+        <div class="item-actions">
+          <button class="primary" data-save-edit="${item.id}">Enregistrer</button>
+          <button class="secondary" data-cancel-edit="${item.id}">Annuler</button>
+        </div>
+      </div>
+    `;
+  }
+}
+
+function normalizeEvent(item) {
+  return {
+    id: Number(item.id || Date.now()),
+    title: item.title || '',
+    date: item.date || '',
+    visibility: item.visibility || 'private',
+    location: item.location || '',
+    description: item.description || '',
+    groups: Array.isArray(item.groups)
+      ? item.groups
+      : item.group
+        ? [item.group]
+        : [],
+    favorite: Boolean(item.favorite)
+  };
+}
+
+function sortEvents(items) {
+  return [...items].sort((a, b) => {
+    if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+
+    const dateA = a.date ? new Date(a.date).getTime() : Number.MAX_SAFE_INTEGER;
+    const dateB = b.date ? new Date(b.date).getTime() : Number.MAX_SAFE_INTEGER;
+
+    return dateA - dateB;
+  });
+}
+
+function getCheckedValues(root) {
+  return Array.from(root.querySelectorAll('input[type="checkbox"]:checked'))
+    .map(input => input.value);
+}
+
+function getVisibilityLabel(value) {
+  if (value === 'public') return 'Public';
+  if (value === 'restricted') return 'Restreint';
+  return 'Privé';
+}
+
+function getVisibilityClass(value) {
+  if (value === 'public') return 'badge-public';
+  if (value === 'restricted') return 'badge-restricted';
+  return 'badge-private';
+}
+
+function formatDate(value) {
+  if (!value) return 'Date non définie';
+
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  }).format(date);
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value).replaceAll('\n', '&#10;');
 }

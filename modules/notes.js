@@ -1,377 +1,416 @@
-import { groups } from './groups.js';
-import { load, save, normalizeNote, normalizeEvent } from './storage.js';
-import { escapeHtml, escapeAttribute, formatDate, renderTags, sortNotes, sortEvents } from './utils.js';
+import { load, save } from './storage.js';
+import { groups, getGroupName } from './groups.js';
 
 const KEY = 'mairie.notes';
-const EVENTS_KEY = 'mairie.events';
 
 export function renderNotes(container) {
-  let notes = sortNotes(load(KEY, []).map(normalizeNote));
-  let state = {
-    filterGroup: 'all',
-    favoritesOnly: false,
-    linkedFilter: 'all'
+  let notes = load(KEY, []).map(normalizeNote);
+  let openId = null;
+  let editingId = null;
+
+  let filters = {
+    group: 'all',
+    search: '',
+    favoritesOnly: false
   };
 
   container.innerHTML = `
-    <div class="page-head">
-      <div>
-        <h2>Notes personnelles</h2>
-        <p>V1.1 + V1.2 • multi-tags, favoris, liaison à un événement et sauvegarde directe.</p>
-      </div>
-      <div class="kpis">
-        <div class="kpi"><div class="kpi-label">Notes</div><div class="kpi-value" id="kpiNotes">0</div></div>
-        <div class="kpi"><div class="kpi-label">Liées à un événement</div><div class="kpi-value" id="kpiLinked">0</div></div>
-        <div class="kpi"><div class="kpi-label">Favoris</div><div class="kpi-value" id="kpiNotesFav">0</div></div>
-      </div>
+    <h2>Notes</h2>
+
+    <div class="page-toolbar">
+      <input id="searchNotes" type="text" placeholder="Rechercher dans les notes...">
+
+      <select id="filterGroup">
+        <option value="all">Toutes les commissions</option>
+        ${groups.map(g => `<option value="${g.id}">${g.name}</option>`).join('')}
+      </select>
+
+      <label class="check-inline">
+        <input type="checkbox" id="favoritesOnly">
+        <span>Favoris seulement</span>
+      </label>
     </div>
 
-    <section class="grid grid-2">
-      <div class="card">
-        <h3 class="section-title">Nouvelle note rapide</h3>
+    <div id="noteList" class="compact-list"></div>
 
-        <div class="form-grid">
-          <div>
-            <label for="noteTitle">Titre (optionnel)</label>
-            <input id="noteTitle" placeholder="Ex. Points à vérifier" />
-          </div>
+    <button class="fab" id="openModal" title="Nouvelle note">+</button>
 
-          <div>
-            <label for="noteContent">Contenu *</label>
-            <textarea id="noteContent" placeholder="Écrire une note, une idée, une question, un rappel..."></textarea>
-          </div>
+    <div class="modal hidden" id="noteModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Nouvelle note</h3>
+          <button class="modal-close" id="closeModal">Fermer</button>
+        </div>
 
+        <div class="inline-edit">
           <div>
-            <label for="linkedEventSelect">Lier à un événement (optionnel)</label>
-            <select id="linkedEventSelect"></select>
+            <label for="newTitle">Titre (optionnel)</label>
+            <input id="newTitle" placeholder="Ex. Point à vérifier">
           </div>
 
           <div>
             <label>Commissions</label>
-            <div class="checkbox-grid" id="noteTagsWrap">
-              ${groups
-                .map(
-                  (group) => `
-                    <label class="check-pill">
-                      <input type="checkbox" value="${group.id}" />
-                      <span>${escapeHtml(group.name)}</span>
-                    </label>
-                  `
-                )
-                .join('')}
+            <div class="checkbox-list" id="newTags">
+              ${groups.map(group => `
+                <label class="checkbox-pill">
+                  <input type="checkbox" value="${group.id}">
+                  <span>${group.name}</span>
+                </label>
+              `).join('')}
             </div>
           </div>
-        </div>
 
-        <div class="actions">
-          <button class="primary" id="addNoteBtn">Ajouter la note</button>
-        </div>
-        <div class="small-note">Les notes restent personnelles dans cette version locale.</div>
-      </div>
-
-      <div>
-        <div class="card card-soft">
-          <div class="toolbar">
-            <select id="notesGroupFilter">
-              <option value="all">Toutes les commissions</option>
-              ${groups.map((group) => `<option value="${group.id}">${escapeHtml(group.name)}</option>`).join('')}
-            </select>
-
-            <select id="notesLinkedFilter"></select>
-
-            <label class="check-pill">
-              <input type="checkbox" id="notesFavoritesOnly" />
-              <span>Favoris seulement</span>
-            </label>
+          <div>
+            <label for="newContent">Contenu *</label>
+            <textarea id="newContent" placeholder="Écrire une note rapide..."></textarea>
           </div>
-          <div class="small-note">Tri : favoris d'abord, puis note la plus récemment modifiée.</div>
-        </div>
 
-        <div class="list" id="noteList"></div>
+          <div class="item-actions">
+            <button class="primary" id="saveNewNote">Ajouter</button>
+          </div>
+        </div>
       </div>
-    </section>
+    </div>
   `;
 
   const refs = {
-    title: container.querySelector('#noteTitle'),
-    content: container.querySelector('#noteContent'),
-    linkedEvent: container.querySelector('#linkedEventSelect'),
-    noteTagsWrap: container.querySelector('#noteTagsWrap'),
-    addBtn: container.querySelector('#addNoteBtn'),
-    filterGroup: container.querySelector('#notesGroupFilter'),
-    filterLinked: container.querySelector('#notesLinkedFilter'),
-    filterFavorites: container.querySelector('#notesFavoritesOnly'),
-    noteList: container.querySelector('#noteList'),
-    kpiNotes: container.querySelector('#kpiNotes'),
-    kpiLinked: container.querySelector('#kpiLinked'),
-    kpiNotesFav: container.querySelector('#kpiNotesFav')
+    list: container.querySelector('#noteList'),
+    search: container.querySelector('#searchNotes'),
+    filterGroup: container.querySelector('#filterGroup'),
+    favoritesOnly: container.querySelector('#favoritesOnly'),
+    modal: container.querySelector('#noteModal'),
+    openModalBtn: container.querySelector('#openModal'),
+    closeModalBtn: container.querySelector('#closeModal'),
+    saveNewBtn: container.querySelector('#saveNewNote'),
+    newTitle: container.querySelector('#newTitle'),
+    newTags: container.querySelector('#newTags'),
+    newContent: container.querySelector('#newContent')
   };
 
-  populateEventSelects();
   bindEvents();
   refresh();
 
-  function getEvents() {
-    return sortEvents(load(EVENTS_KEY, []).map(normalizeEvent));
-  }
-
-  function populateEventSelects() {
-    const events = getEvents();
-    const currentNewValue = refs.linkedEvent.value;
-
-    refs.linkedEvent.innerHTML = [
-      '<option value="">Aucun événement lié</option>',
-      ...events.map((eventItem) => `<option value="${eventItem.id}">${escapeHtml(eventItem.title)} — ${escapeHtml(formatDate(eventItem.date))}</option>`)
-    ].join('');
-    refs.linkedEvent.value = currentNewValue;
-
-    refs.filterLinked.innerHTML = [
-      '<option value="all">Tous les événements liés</option>',
-      '<option value="none">Sans événement lié</option>',
-      ...events.map((eventItem) => `<option value="${eventItem.id}">${escapeHtml(eventItem.title)}</option>`)
-    ].join('');
-    refs.filterLinked.value = String(state.linkedFilter);
-  }
-
   function bindEvents() {
-    refs.addBtn.addEventListener('click', addNote);
+    refs.search.addEventListener('input', () => {
+      filters.search = refs.search.value.trim().toLowerCase();
+      refresh();
+    });
 
     refs.filterGroup.addEventListener('change', () => {
-      state.filterGroup = refs.filterGroup.value;
+      filters.group = refs.filterGroup.value;
       refresh();
     });
 
-    refs.filterLinked.addEventListener('change', () => {
-      state.linkedFilter = refs.filterLinked.value;
+    refs.favoritesOnly.addEventListener('change', () => {
+      filters.favoritesOnly = refs.favoritesOnly.checked;
       refresh();
     });
 
-    refs.filterFavorites.addEventListener('change', () => {
-      state.favoritesOnly = refs.filterFavorites.checked;
-      refresh();
+    refs.openModalBtn.addEventListener('click', () => {
+      refs.modal.classList.remove('hidden');
     });
 
-    refs.noteList.addEventListener('click', (event) => {
-      const favoriteBtn = event.target.closest('[data-favorite-id]');
+    refs.closeModalBtn.addEventListener('click', () => {
+      refs.modal.classList.add('hidden');
+      resetCreateForm();
+    });
+
+    refs.saveNewBtn.addEventListener('click', createNote);
+
+    refs.list.addEventListener('click', (event) => {
+      const favoriteBtn = event.target.closest('[data-favorite]');
       if (favoriteBtn) {
-        toggleFavorite(Number(favoriteBtn.dataset.favoriteId));
+        event.stopPropagation();
+        const id = Number(favoriteBtn.dataset.favorite);
+        toggleFavorite(id);
         return;
       }
 
-      const saveBtn = event.target.closest('[data-save-id]');
-      if (saveBtn) {
-        saveNoteFromCard(Number(saveBtn.dataset.saveId));
-        return;
-      }
-
-      const deleteBtn = event.target.closest('[data-delete-id]');
+      const deleteBtn = event.target.closest('[data-delete]');
       if (deleteBtn) {
-        removeNote(Number(deleteBtn.dataset.deleteId));
+        event.stopPropagation();
+        const id = Number(deleteBtn.dataset.delete);
+        deleteNote(id);
+        return;
+      }
+
+      const editBtn = event.target.closest('[data-edit]');
+      if (editBtn) {
+        event.stopPropagation();
+        const id = Number(editBtn.dataset.edit);
+        editingId = id;
+        openId = id;
+        refresh();
+        return;
+      }
+
+      const cancelEditBtn = event.target.closest('[data-cancel-edit]');
+      if (cancelEditBtn) {
+        event.stopPropagation();
+        editingId = null;
+        refresh();
+        return;
+      }
+
+      const saveEditBtn = event.target.closest('[data-save-edit]');
+      if (saveEditBtn) {
+        event.stopPropagation();
+        const id = Number(saveEditBtn.dataset.saveEdit);
+        saveEditedNote(id);
+        return;
+      }
+
+      const header = event.target.closest('.collapsible-header');
+      if (header) {
+        const card = header.closest('.collapsible');
+        if (!card) return;
+
+        const id = Number(card.dataset.id);
+        openId = openId === id ? null : id;
+        editingId = null;
+        refresh();
       }
     });
   }
 
-  function getSelectedTagsFromForm() {
-    return Array.from(refs.noteTagsWrap.querySelectorAll('input[type="checkbox"]:checked')).map((input) => input.value);
-  }
-
-  function addNote() {
-    const title = refs.title.value.trim();
-    const content = refs.content.value.trim();
-    const tags = getSelectedTagsFromForm();
-    const linkedEventId = refs.linkedEvent.value ? Number(refs.linkedEvent.value) : null;
+  function createNote() {
+    const title = refs.newTitle.value.trim();
+    const content = refs.newContent.value.trim();
+    const tags = getCheckedValues(refs.newTags);
 
     if (!content) {
       alert('Merci de saisir le contenu de la note.');
       return;
     }
 
-    const now = new Date().toISOString();
-
-    notes.unshift(
-      normalizeNote({
-        id: Date.now(),
-        title,
-        content,
-        tags,
-        linkedEventId,
-        favorite: false,
-        createdAt: now,
-        updatedAt: now
-      })
-    );
-
-    notes = sortNotes(notes);
-    save(KEY, notes);
-
-    refs.title.value = '';
-    refs.content.value = '';
-    refs.linkedEvent.value = '';
-    refs.noteTagsWrap.querySelectorAll('input[type="checkbox"]').forEach((input) => {
-      input.checked = false;
+    const noteItem = normalizeNote({
+      id: Date.now(),
+      title,
+      content,
+      tags,
+      favorite: false
     });
 
+    notes.unshift(noteItem);
+    saveAll();
+
+    refs.modal.classList.add('hidden');
+    resetCreateForm();
+    openId = noteItem.id;
     refresh();
+  }
+
+  function resetCreateForm() {
+    refs.newTitle.value = '';
+    refs.newContent.value = '';
+    refs.newTags.querySelectorAll('input[type="checkbox"]').forEach(input => {
+      input.checked = false;
+    });
   }
 
   function toggleFavorite(id) {
-    const now = new Date().toISOString();
-    notes = sortNotes(
-      notes.map((item) => (item.id === id ? { ...item, favorite: !item.favorite, updatedAt: now } : item))
+    notes = notes.map(item =>
+      item.id === id ? { ...item, favorite: !item.favorite } : item
     );
-    save(KEY, notes);
+    saveAll();
     refresh();
   }
 
-  function saveNoteFromCard(id) {
-    const card = refs.noteList.querySelector(`[data-note-id="${id}"]`);
+  function deleteNote(id) {
+    const item = notes.find(noteItem => noteItem.id === id);
+    if (!item) return;
+
+    const ok = confirm(`Supprimer la note « ${item.title || 'Sans titre'} » ?`);
+    if (!ok) return;
+
+    notes = notes.filter(noteItem => noteItem.id !== id);
+
+    if (openId === id) openId = null;
+    if (editingId === id) editingId = null;
+
+    saveAll();
+    refresh();
+  }
+
+  function saveEditedNote(id) {
+    const card = refs.list.querySelector(`.collapsible[data-id="${id}"]`);
     if (!card) return;
 
-    const title = card.querySelector('.note-edit-title').value.trim();
-    const content = card.querySelector('.note-edit-content').value.trim();
-    const linkedEventId = card.querySelector('.note-edit-linked').value ? Number(card.querySelector('.note-edit-linked').value) : null;
-    const tags = Array.from(card.querySelectorAll('.note-edit-tag:checked')).map((input) => input.value);
+    const title = card.querySelector('.edit-title').value.trim();
+    const content = card.querySelector('.edit-content').value.trim();
+    const selectedTags = Array.from(card.querySelectorAll('.edit-tag:checked')).map(input => input.value);
 
     if (!content) {
       alert('Le contenu de la note ne peut pas être vide.');
       return;
     }
 
-    notes = sortNotes(
-      notes.map((item) =>
-        item.id === id
-          ? normalizeNote({
-              ...item,
-              title,
-              content,
-              linkedEventId,
-              tags,
-              updatedAt: new Date().toISOString()
-            })
-          : item
-      )
+    notes = notes.map(item =>
+      item.id === id
+        ? normalizeNote({
+            ...item,
+            title,
+            content,
+            tags: selectedTags
+          })
+        : item
     );
 
-    save(KEY, notes);
+    editingId = null;
+    saveAll();
     refresh();
   }
 
-  function removeNote(id) {
-    const item = notes.find((note) => note.id === id);
-    if (!item) return;
-
-    const confirmed = confirm(`Supprimer la note « ${item.title || 'Sans titre'} » ?`);
-    if (!confirmed) return;
-
-    notes = notes.filter((note) => note.id !== id);
+  function saveAll() {
     save(KEY, notes);
-    refresh();
-  }
-
-  function getLinkedEventLabel(id) {
-    if (!id) return 'Aucun événement lié';
-    const eventItem = getEvents().find((item) => item.id === id);
-    return eventItem ? `${eventItem.title} (${formatDate(eventItem.date)})` : 'Événement supprimé';
   }
 
   function getFilteredNotes() {
     return sortNotes(
-      notes.filter((item) => {
-        const groupMatch = state.filterGroup === 'all' || item.tags.includes(state.filterGroup);
-        const favoriteMatch = !state.favoritesOnly || item.favorite;
-        const linkedMatch =
-          state.linkedFilter === 'all'
-            ? true
-            : state.linkedFilter === 'none'
-              ? !item.linkedEventId
-              : item.linkedEventId === Number(state.linkedFilter);
+      notes.filter(item => {
+        const groupMatch =
+          filters.group === 'all' || item.tags.includes(filters.group);
 
-        return groupMatch && favoriteMatch && linkedMatch;
+        const favoriteMatch =
+          !filters.favoritesOnly || item.favorite;
+
+        const searchValue = filters.search;
+        const searchMatch =
+          !searchValue ||
+          item.title.toLowerCase().includes(searchValue) ||
+          item.content.toLowerCase().includes(searchValue);
+
+        return groupMatch && favoriteMatch && searchMatch;
       })
     );
   }
 
+  function refresh() {
+    const filtered = getFilteredNotes();
+
+    if (!filtered.length) {
+      refs.list.innerHTML = `<div class="card empty-state">Aucune note pour ces critères.</div>`;
+      return;
+    }
+
+    refs.list.innerHTML = filtered.map(item => renderCard(item)).join('');
+  }
+
   function renderCard(item) {
-    const events = getEvents();
+    const isOpen = openId === item.id;
+    const isEditing = editingId === item.id;
+
     return `
-      <article class="card item-card ${item.favorite ? 'favorite' : ''}" data-note-id="${item.id}">
-        <div class="item-top">
-          <div>
-            <h3 class="item-title">${escapeHtml(item.title || 'Note sans titre')}</h3>
-            <div class="meta-row">
-              <span class="meta">Liée à : ${escapeHtml(getLinkedEventLabel(item.linkedEventId))}</span>
-              <span class="meta">Mis à jour : ${escapeHtml(new Date(item.updatedAt).toLocaleString('fr-FR'))}</span>
-            </div>
-          </div>
-          <button class="icon-btn ${item.favorite ? 'active-star' : ''}" data-favorite-id="${item.id}" title="Basculer favori">
-            ${item.favorite ? '⭐' : '☆'}
-          </button>
-        </div>
+      <article class="card collapsible ${isOpen ? 'open' : ''} ${item.favorite ? 'favorite' : ''}" data-id="${item.id}">
+        <div class="collapsible-header">
+          <div class="collapsible-main">
+            <h3 class="collapsible-title">${escapeHtml(item.title || 'Sans titre')}</h3>
 
-        <div class="note-editor">
-          <div class="note-row note-row-2">
-            <div>
-              <label>Titre</label>
-              <input class="note-edit-title" value="${escapeAttribute(item.title || '')}" />
-            </div>
-            <div>
-              <label>Événement lié</label>
-              <select class="note-edit-linked">
-                <option value="">Aucun événement lié</option>
-                ${events
-                  .map(
-                    (eventItem) => `<option value="${eventItem.id}" ${eventItem.id === item.linkedEventId ? 'selected' : ''}>${escapeHtml(eventItem.title)} — ${escapeHtml(formatDate(eventItem.date))}</option>`
-                  )
-                  .join('')}
-              </select>
+            <div class="collapsible-tags">
+              ${item.tags.length
+                ? item.tags.map(tagId => `<span class="tag">${escapeHtml(getGroupName(tagId))}</span>`).join('')
+                : `<span class="muted">Sans commission</span>`
+              }
             </div>
           </div>
 
-          <div>
-            <label>Contenu</label>
-            <textarea class="note-edit-content">${escapeHtml(item.content)}</textarea>
-          </div>
-
-          <div>
-            <label>Commissions</label>
-            <div class="checkbox-grid">
-              ${groups
-                .map(
-                  (group) => `
-                    <label class="check-pill">
-                      <input class="note-edit-tag" type="checkbox" value="${group.id}" ${item.tags.includes(group.id) ? 'checked' : ''} />
-                      <span>${escapeHtml(group.name)}</span>
-                    </label>
-                  `
-                )
-                .join('')}
-            </div>
+          <div class="collapsible-meta">
+            <button class="icon-btn ${item.favorite ? 'favorite-on' : ''}" data-favorite="${item.id}" title="Favori">
+              ${item.favorite ? '★' : '☆'}
+            </button>
           </div>
         </div>
 
-        <div>${renderTags(item.tags || [])}</div>
-
-        <div class="actions">
-          <button class="primary" data-save-id="${item.id}">Sauvegarder</button>
-          <button class="danger" data-delete-id="${item.id}">Supprimer</button>
+        <div class="collapsible-content">
+          ${
+            isEditing
+              ? renderEditForm(item)
+              : renderDetails(item)
+          }
         </div>
       </article>
     `;
   }
 
-  function refresh() {
-    populateEventSelects();
-    const filtered = getFilteredNotes();
+  function renderDetails(item) {
+    return `
+      <div class="item-description">${escapeHtml(item.content)}</div>
 
-    refs.kpiNotes.textContent = String(notes.length);
-    refs.kpiLinked.textContent = String(notes.filter((item) => item.linkedEventId).length);
-    refs.kpiNotesFav.textContent = String(notes.filter((item) => item.favorite).length);
-
-    if (!filtered.length) {
-      refs.noteList.innerHTML = `<div class="card empty">Aucune note pour ce filtre.</div>`;
-      return;
-    }
-
-    refs.noteList.innerHTML = filtered.map(renderCard).join('');
+      <div class="item-actions">
+        <button class="secondary" data-edit="${item.id}">Modifier</button>
+        <button class="danger" data-delete="${item.id}">Supprimer</button>
+      </div>
+    `;
   }
+
+  function renderEditForm(item) {
+    return `
+      <div class="inline-edit">
+        <div>
+          <label>Titre</label>
+          <input class="edit-title" value="${escapeAttribute(item.title || '')}">
+        </div>
+
+        <div>
+          <label>Commissions</label>
+          <div class="checkbox-list">
+            ${groups.map(group => `
+              <label class="checkbox-pill">
+                <input class="edit-tag" type="checkbox" value="${group.id}" ${item.tags.includes(group.id) ? 'checked' : ''}>
+                <span>${group.name}</span>
+              </label>
+            `).join('')}
+          </div>
+        </div>
+
+        <div>
+          <label>Contenu</label>
+          <textarea class="edit-content">${escapeHtml(item.content)}</textarea>
+        </div>
+
+        <div class="item-actions">
+          <button class="primary" data-save-edit="${item.id}">Enregistrer</button>
+          <button class="secondary" data-cancel-edit="${item.id}">Annuler</button>
+        </div>
+      </div>
+    `;
+  }
+}
+
+function normalizeNote(item) {
+  return {
+    id: Number(item.id || Date.now()),
+    title: item.title || '',
+    content: item.content || '',
+    tags: Array.isArray(item.tags) ? item.tags : [],
+    favorite: Boolean(item.favorite)
+  };
+}
+
+function sortNotes(items) {
+  return [...items].sort((a, b) => {
+    if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
+
+    const titleA = (a.title || '').toLowerCase();
+    const titleB = (b.title || '').toLowerCase();
+    return titleA.localeCompare(titleB);
+  });
+}
+
+function getCheckedValues(root) {
+  return Array.from(root.querySelectorAll('input[type="checkbox"]:checked'))
+    .map(input => input.value);
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value).replaceAll('\n', '&#10;');
 }
